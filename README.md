@@ -95,3 +95,25 @@ Everything except the changes listed above is upstream
 (MIT, LangChain), by LangChain. Upstream README, benchmarks, and
 docs remain in the git history; see
 [src/legacy/](src/legacy/legacy.md) for the older single-graph variant.
+
+## Syncing with upstream
+
+This repo was created by re-committing the upstream April 2026
+snapshot, so it shares no commit history with upstream — a plain
+`git merge upstream/main` fails ("unrelated histories") and even with
+`--allow-unrelated-histories` every shared file is an add/add
+conflict. Sync by content diff instead:
+
+```bash
+git remote add upstream https://github.com/langchain-ai/open_deep_research.git
+git fetch upstream
+# what upstream changed since the April snapshot, file by file:
+git diff --stat upstream/main HEAD -- src/ pyproject.toml
+# review a specific file, then port interesting changes by hand:
+git diff upstream/main HEAD -- src/open_deep_research/utils.py
+```
+
+Known upstream deltas since April 2026: dependency bumps only, plus a
+`prompts.py` edit that hardcodes "tavily_search" into the researcher
+prompt (a regression for this fork's MCP-based search — do not port).
+As of September 2026 nothing upstream is worth taking.

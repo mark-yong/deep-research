@@ -3,6 +3,7 @@
 import asyncio
 from typing import Literal
 
+import os
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import (
     AIMessage,
@@ -52,7 +53,12 @@ from open_deep_research.utils import (
     think_tool,
 )
 
-# Initialize a configurable model that we will use throughout the agent
+# Initialize a configurable model that we will use throughout the agent.
+# RESEARCH_BASE_URL (OpenAI-compatible gateway) is forwarded to the client
+# via OPENAI_API_BASE (the env var init_chat_model/ChatOpenAI actually
+# reads), before any model client is constructed.
+if os.environ.get("RESEARCH_BASE_URL"):
+    os.environ.setdefault("OPENAI_API_BASE", os.environ["RESEARCH_BASE_URL"])
 configurable_model = init_chat_model(
     configurable_fields=("model", "max_tokens", "api_key"),
 )

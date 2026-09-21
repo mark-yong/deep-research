@@ -121,11 +121,11 @@ class Configuration(BaseModel):
     )
     # Model Configuration
     summarization_model: str = Field(
-        default="minimax:m27sg",
+        default="openai:research",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "minimax:m27sg",
+                "default": "openai:research",
                 "description": "Model for summarizing research results from web search results"
             }
         }
@@ -153,11 +153,11 @@ class Configuration(BaseModel):
         }
     )
     research_model: str = Field(
-        default="minimax:m27sg",
+        default="openai:research",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "minimax:m27sg",
+                "default": "openai:research",
                 "description": "Model for conducting research. NOTE: Make sure your Researcher Model supports the selected search API."
             }
         }
@@ -173,11 +173,11 @@ class Configuration(BaseModel):
         }
     )
     compression_model: str = Field(
-        default="minimax:m27sg",
+        default="openai:research",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "minimax:m27sg",
+                "default": "openai:research",
                 "description": "Model for compressing research findings from sub-agents. NOTE: Make sure your Compression Model supports the selected search API."
             }
         }
@@ -193,11 +193,11 @@ class Configuration(BaseModel):
         }
     )
     final_report_model: str = Field(
-        default="minimax:m27sg",
+        default="openai:research",
         metadata={
             "x_oap_ui_config": {
                 "type": "text",
-                "default": "minimax:m27sg",
+                "default": "openai:research",
                 "description": "Model for writing the final report from all research findings"
             }
         }
@@ -249,7 +249,7 @@ class Configuration(BaseModel):
         result = cls(**{k: v for k, v in values.items() if v is not None})
 
         if result.search_api == SearchAPI.SEARXNG and result.mcp_config is None:
-            searxng_url = os.environ.get("SEARXNG_MCP_URL", "http://192.168.68.104:8080/mcp")
+            searxng_url = os.environ.get("SEARCH_MCP_URL", "http://localhost:8080/mcp")
             result.mcp_config = MCPConfig(
                 url=searxng_url,
                 tools=["search"],

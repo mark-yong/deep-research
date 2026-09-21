@@ -9,6 +9,12 @@ from typing import Annotated, Any, Dict, List, Literal, Optional
 
 import aiohttp
 from langchain.chat_models import init_chat_model
+
+# RESEARCH_BASE_URL (OpenAI-compatible gateway) -> the OPENAI_API_BASE
+# env var that init_chat_model/ChatOpenAI reads, before any client is
+# constructed.
+if os.environ.get("RESEARCH_BASE_URL"):
+    os.environ.setdefault("OPENAI_API_BASE", os.environ["RESEARCH_BASE_URL"])
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
@@ -831,6 +837,10 @@ MODEL_TOKEN_LIMITS = {
     "anthropic.claude-opus-4-1-20250805-v1:0": 200000,
     "minimax:m27sg": 262144,
     "minimax:m2.5": 262144,
+    # LiteLLM gateway aliases (OpenAI-compatible; actual model behind the
+    # alias varies as the homelab stack evolves).
+    "openai:research": 200000,
+    "openai:researcher": 200000,
 }
 
 def get_model_token_limit(model_string):

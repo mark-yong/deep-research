@@ -11,7 +11,7 @@ OpenCode config (~/.config/opencode/opencode.json):
   "mcp": {
     "deep_research": {
       "type": "local",
-      "command": ["/home/myong/projects/deep-research/.venv/bin/python", "-m", "open_deep_research.mcp_server"],
+      "command": ["python", "-m", "open_deep_research.mcp_server"],
       "enabled": true
     }
   }
@@ -28,6 +28,12 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
+# RESEARCH_BASE_URL (OpenAI-compatible gateway) -> the OPENAI_API_BASE
+# env var that init_chat_model/ChatOpenAI reads, before any client is
+# constructed.
+if os.environ.get("RESEARCH_BASE_URL"):
+    os.environ.setdefault("OPENAI_API_BASE", os.environ["RESEARCH_BASE_URL"])
+
 from open_deep_research.deep_researcher import deep_researcher
 from open_deep_research.configuration import Configuration, SearchAPI
 
@@ -39,7 +45,7 @@ server = Server(
 
 
 def _build_runnable_config() -> dict:
-    searxng_url = os.environ.get("SEARXNG_MCP_URL", "http://192.168.68.104:8080/mcp")
+    searxng_url = os.environ.get("SEARCH_MCP_URL", "http://localhost:8080/mcp")
     return {
         "configurable": {
             "search_api": SearchAPI.SEARXNG.value,
@@ -52,10 +58,10 @@ def _build_runnable_config() -> dict:
             "allow_clarification": False,
             "max_researcher_iterations": 10,
             "max_concurrent_research_units": 3,
-            "research_model": "minimax:m27sg",
-            "summarization_model": "minimax:m27sg",
-            "compression_model": "minimax:m27sg",
-            "final_report_model": "minimax:m27sg",
+            "research_model": "openai:research",
+            "summarization_model": "openai:research",
+            "compression_model": "openai:research",
+            "final_report_model": "openai:research",
         },
         "metadata": {"owner": "opencode"},
     }

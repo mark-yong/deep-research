@@ -484,8 +484,11 @@ async def load_mcp_tools(
     if not config_valid:
         return []
     
-    # Step 3: Set up MCP server connection
-    server_url = configurable.mcp_config.url.rstrip("/") + "/mcp"
+    # Step 3: Set up MCP server connection.
+    # mcp_config.url is the COMPLETE MCP endpoint URL (e.g.
+    # http://host:8080/mcp). Historically this code appended "/mcp",
+    # silently turning a documented endpoint into ".../mcp/mcp".
+    server_url = configurable.mcp_config.url.rstrip("/")
     
     # Configure authentication headers if tokens are available
     auth_headers = None
@@ -501,13 +504,21 @@ async def load_mcp_tools(
     }
     # TODO: When Multi-MCP Server support is merged in OAP, update this code
     
-    # Step 4: Load tools from MCP server
+    # Step 4: Load tools from MCP server.
+    # Fail loudly: an unreachable search backend must not silently produce
+    # a "research" run with zero search capability.
     try:
         client = MultiServerMCPClient(mcp_server_config)
         available_mcp_tools = await client.get_tools()
-    except Exception:
-        # If MCP server connection fails, return empty list
-        return []
+    except Exception as e:
+        logging.error(
+            "MCP server connection failed for %s (tools requested: %s): %s",
+            server_url, configurable.mcp_config.tools, e
+        )
+        raise RuntimeError(
+            f"Failed to load MCP tools from {server_url} "
+            f"(requested: {configurable.mcp_config.tools}): {e}"
+        ) from e
     
     # Step 5: Filter and configure tools
     configured_tools = []
@@ -526,6 +537,16 @@ async def load_mcp_tools(
         # Wrap tool with authentication handling and add to list
         enhanced_tool = wrap_mcp_authenticate_tool(mcp_tool)
         configured_tools.append(enhanced_tool)
+    
+    # The configuration explicitly requested these tools; coming back empty
+    # means the search backend is broken or exposed different tool names.
+    # Previously this returned [] and the researcher ran with no search tool.
+    if not configured_tools:
+        available = sorted(t.name for t in available_mcp_tools) or ["<server unreachable>"]
+        raise RuntimeError(
+            f"MCP server at {server_url} exposed none of the requested tools "
+            f"{sorted(set(configurable.mcp_config.tools))}. Available tools: {available}"
+        )
     
     return configured_tools
 

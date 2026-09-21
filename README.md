@@ -21,9 +21,9 @@ describe my setup.
 - Models point at a self-hosted OpenAI-compatible endpoint through the
   gateway alias (`research_model: openai:research`, resolved via
   `RESEARCH_BASE_URL`) — not OpenAI's API.
-- Search runs through an MCP server (`SEARCH_MCP_URL`); the April 2026
-  setup used a self-hosted SearXNG MCP server
-  (`search_api: searxng`), not Tavily.
+- Search runs through an MCP server (`SEARCH_MCP_URL`, the complete MCP
+  endpoint URL); the April 2026 setup used a self-hosted SearXNG MCP
+  server exposing a `search` tool (`search_api: searxng`), not Tavily.
 - Added `src/open_deep_research/mcp_server.py` (~180 lines): exposes the
   agent itself as an MCP tool, so agent harnesses can call deep research
   directly.

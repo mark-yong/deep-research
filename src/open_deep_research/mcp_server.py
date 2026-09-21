@@ -22,8 +22,9 @@ import asyncio
 import json
 import os
 import sys
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, cast
 
+from langchain_core.runnables import RunnableConfig
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
@@ -71,52 +72,58 @@ def _emit_progress(phase: str, message: str) -> None:
     print(json.dumps({"type": "progress", "phase": phase, "message": message}), file=sys.stderr, flush=True)
 
 
-@server.list_tools()
-async def list_tools() -> list[Tool]:
-    return [
-        Tool(
-            name="deep_research",
-            description=(
-                "Conduct deep research on any topic. Performs multi-pass web searching, "
-                "source extraction, and synthesis into a comprehensive report with citations. "
-                "Best for complex, multi-faceted research questions that require gathering "
-                "information from many sources. Returns a structured report with inline "
-                "citations and a sources section."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": (
-                            "The research question or topic to investigate. "
-                            "Be specific and include key dimensions or angles to explore."
-                        ),
-                    },
-                },
-                "required": ["query"],
-            },
-        )
-    ]
+# Human-readable phase labels for graph node names (langgraph streams
+# updates as {node_name: update} dicts, optionally namespaced under
+# subgraphs like ("research_supervisor:<uuid>", ...)).
+_NODE_PHASES = [
+    ("clarify_with_user", ("briefing", "Analyzing research scope...")),
+    ("write_research_brief", ("briefing", "Research brief generated.")),
+    ("research_supervisor", ("researching", "Research in progress...")),
+    ("researcher", ("researching", "Research in progress...")),
+    ("final_report_generation", ("synthesizing", "Synthesizing final report...")),
+]
 
 
-async def _stream_research(query: str) -> AsyncIterator[dict[str, Any]]:
-    config = _build_runnable_config()
-    input_state = {"messages": [{"type": "human", "content": query}]}
+def _phase_for_node(node_name: str) -> tuple[str, str]:
+    for prefix, phase in _NODE_PHASES:
+        if node_name.startswith(prefix) or prefix in node_name:
+            return phase
+    return ("working", "Processing...")
 
-    async for event in deep_researcher.astream(input_state, config):
-        node = event.get("__node_name__") if isinstance(event, dict) else None
 
-        if node == "clarify_with_user":
-            yield {"phase": "briefing", "message": "Analyzing research scope..."}
-        elif node == "write_research_brief":
-            yield {"phase": "briefing", "message": "Research brief generated."}
-        elif node == "research_supervisor":
-            yield {"phase": "researching", "message": "Research in progress..."}
-        elif node == "final_report_generation":
-            yield {"phase": "synthesizing", "message": "Synthesizing final report..."}
-        else:
-            yield {"phase": "working", "message": "Processing..."}
+async def _run_research_once(query: str) -> AsyncIterator[dict[str, Any]]:
+    """Execute the graph exactly once, streaming progress while capturing
+    the final state.
+
+    The stream combines two modes:
+      - "updates" (with subgraphs) yields (namespace, {node: update})
+        tuples, used for progress reporting only;
+      - "values" yields the full accumulated state; the final one is the
+        graph's terminal state, captured for the result.
+
+    The research graph runs exactly once per call: astream() both
+    executes it and hands us the final state. Do not ainvoke() the same
+    query afterwards — that would run the entire research a second time.
+    """
+    config: RunnableConfig = cast(Any, _build_runnable_config())
+    input_state: dict[str, Any] = {"messages": [{"type": "human", "content": query}]}
+
+    last_state: dict[str, Any] = {}
+    async for chunk in deep_researcher.astream(
+        input_state, config, stream_mode=["updates", "values"], subgraphs=True
+    ):
+        namespace, mode, payload = chunk
+        if mode == "values":
+            last_state = cast(dict[str, Any], payload)
+            continue
+        # updates mode: payload is {node_name: update}
+        if not isinstance(payload, dict):
+            continue
+        for node_name in payload:
+            phase, message = _phase_for_node(node_name)
+            yield {"phase": phase, "message": message}
+
+    yield {"phase": "final", "state": last_state}
 
 
 @server.call_tool()
@@ -134,53 +141,47 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     final_state: dict[str, Any] = {}
 
     try:
-        async for step in _stream_research(query):
+        async for step in _run_research_once(query):
+            if step.get("phase") == "final":
+                final_state = step.get("state") or {}
+                continue
             phase = step.get("phase", "unknown")
             message = step.get("message", "")
             progress_steps.append(f"[{phase.upper()}] {message}")
             _emit_progress(phase, message)
-            final_state = step if isinstance(step, dict) else {}
-    except Exception as e:
-        _emit_progress("error", str(e))
-        return [TextContent(type="text", text=json.dumps({"error": str(e), "query": query}, indent=2))]
-
-    config = _build_runnable_config()
-    input_state = {"messages": [{"type": "human", "content": query}]}
-
-    try:
-        final_state = await deep_researcher.ainvoke(input_state, config)
     except Exception as e:
         _emit_progress("error", str(e))
         return [TextContent(type="text", text=json.dumps({"error": str(e), "query": query}, indent=2))]
 
     final_report = final_state.get("final_report", "No report generated.")
-    notes = final_state.get("notes", [])
-    raw_notes = final_state.get("raw_notes", [])
-
-    all_notes = notes + raw_notes
-    if all_notes:
-        sources_lines = []
-        for i, note in enumerate(all_notes, 1):
-            text = str(note)
-            excerpt = text[:400] + "..." if len(text) > 400 else text
-            sources_lines.append(f"[{i}] {excerpt}")
-        final_report = final_report + "\n\n---\n\n### Sources\n\n" + "\n".join(sources_lines)
 
     result = {
         "query": query,
         "report": final_report,
         "steps": progress_steps,
-        "sources_count": len(all_notes),
+        "sources_count": len(final_state.get("notes", [])) or None,
     }
+    if result["sources_count"] is None:
+        del result["sources_count"]
 
-    _emit_progress("done", f"Research complete. {len(all_notes)} sources gathered.")
+    _emit_progress("done", "Research complete.")
 
     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
-async def main():
-    await stdio_server(server)
+async def _amain() -> None:
+    async with stdio_server() as (read_stream, write_stream):
+        await server.run(
+            read_stream,
+            write_stream,
+            server.create_initialization_options(),
+        )
+
+
+def main() -> None:
+    """Synchronous entry point for the console script and `python -m`."""
+    asyncio.run(_amain())
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

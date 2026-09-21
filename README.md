@@ -11,10 +11,10 @@ describe my setup.
 > Qwen3.6-35B behind a LiteLLM gateway, and search became a
 > multi-provider layer (Parallel/You.com/Brave/Tavily/SearXNG) in the
 > agent harness. The MCP wrapper and adaptation approach still stand;
-> model and endpoint specifics below are period-accurate. The code
-> itself is now model-agnostic: defaults point at the
-> `openai:research` alias resolved via `RESEARCH_BASE_URL`, so the
-> gateway front-ends whatever is current.
+> model and endpoint specifics below are period-accurate. The adaptation
+> is backend-model-agnostic behind an OpenAI-compatible gateway: the
+> repo targets the `openai:research` alias rather than a specific
+> underlying model.
 
 ## What changed from upstream
 
@@ -44,8 +44,10 @@ agent harness → deep_research (MCP tool) → LangGraph agent
 
 ## Running it
 
-Prerequisites: an OpenAI-compatible endpoint (LiteLLM gateway, SGLang,
-or vLLM) serving any tool-calling model, and an MCP search server.
+Prerequisites: an OpenAI-compatible endpoint serving a model with
+reliable tool calling **and structured-output support** (the brief,
+clarification, and summarization paths all use structured output), and
+an MCP search server exposing a `search` tool.
 
 ```bash
 git clone https://github.com/mark-yong/deep-research.git
@@ -61,7 +63,7 @@ export SEARCH_MCP_URL=http://your-host:8080/mcp
 The default model alias `openai:research` must exist at the gateway
 (LiteLLM: a model_name in config; a raw SGLang/vLLM endpoint: its
 served model id, e.g. `openai:glm-5.3-flash`). Override per-run via
-the `research_model` / `summarization_model` / `final_answer_model`
+the `research_model` / `summarization_model` / `final_report_model`
 config knobs if your alias differs.
 
 Serve the agent as an MCP tool:

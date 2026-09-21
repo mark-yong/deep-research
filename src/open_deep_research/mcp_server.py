@@ -155,14 +155,15 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
     final_report = final_state.get("final_report", "No report generated.")
 
+    # No wrapper-computed source count: state "notes" are accumulated
+    # tool/AI message extracts, not one record per source, so counting
+    # them would misrepresent provenance. The report's own citations are
+    # the source of truth.
     result = {
         "query": query,
         "report": final_report,
         "steps": progress_steps,
-        "sources_count": len(final_state.get("notes", [])) or None,
     }
-    if result["sources_count"] is None:
-        del result["sources_count"]
 
     _emit_progress("done", "Research complete.")
 
